@@ -7,12 +7,9 @@ import Progress from "./Progress";
 
 interface CanvasComponentProps {
   outputDimWidth?: number;
-  outputDimHight?: number;
+  outputDimHeight?: number;
   sizeFactor?: number;
   patternDim?: number;
-  frameRate?: number;
-  canvasWidth?: number;
-  canvasHeight?: number;
 }
 
 const loadImage = (src: string): Promise<HTMLImageElement> => {
@@ -26,16 +23,16 @@ const loadImage = (src: string): Promise<HTMLImageElement> => {
 
 const CanvasComponent = ({
   outputDimWidth = 96,
-  outputDimHight = 50,
+  outputDimHeight = 50,
   sizeFactor = 9,
   patternDim = 3,
 }: CanvasComponentProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [context, setContext] = useState<CanvasRenderingContext2D | null>(null);
   const [imageData, setImageData] = useState<ImageData>();
-  const [drawnPatterns, setDrawnPatterns] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const stepCountRef = useRef(0);
   const [stepCount, setStepCount] = useState(0);
   const [patternSize, setPatternSize] = useState(patternDim);
   const [scaleFactor, setScaleFactor] = useState(sizeFactor);
@@ -46,7 +43,7 @@ const CanvasComponent = ({
 
   const { setup, draw } = useWaveFunctionCollapse(
     outputDimWidth,
-    outputDimHight,
+    outputDimHeight,
     1, // Always use scale factor 1 for WFC calculations
     patternSize,
   );
@@ -66,7 +63,6 @@ const CanvasComponent = ({
               image.width,
               image.height,
             );
-            console.log(imageData, "imageData");
             setImageData(imageData);
             setStatus("Image loaded - ready to scan");
             setError(null);
@@ -78,13 +74,13 @@ const CanvasComponent = ({
           });
 
         canvas.width = outputDimWidth * scaleFactor;
-        canvas.height = outputDimHight * scaleFactor;
+        canvas.height = outputDimHeight * scaleFactor;
 
         context.fillStyle = "#FFFFFF";
         context.fillRect(0, 0, context.canvas.width, context.canvas.height);
       }
     }
-  }, [outputDimWidth, outputDimHight, scaleFactor]);
+  }, [outputDimWidth, outputDimHeight, scaleFactor]);
 
   // Remove automatic setup - will be triggered by scan button
 
@@ -103,7 +99,7 @@ const CanvasComponent = ({
         imageData.width,
         imageData.height,
         outputDimWidth, // Always use original dimensions for WFC
-        outputDimHight,
+        outputDimHeight,
       );
 
       setIsSetupComplete(true);
@@ -123,14 +119,15 @@ const CanvasComponent = ({
     try {
       const drawResult = await draw();
       if (drawResult) {
-        const { selectedPattern, entropyMin, cellDimentionX, cellDimentionY } =
+        const { selectedPattern, entropyMin, cellDimensionX, cellDimensionY } =
           drawResult;
 
         // Increment step counter
-        setStepCount((prev) => prev + 1);
-        setStatus(`Generating step ${stepCount + 1}...`);
+        stepCountRef.current += 1;
+        setStepCount(stepCountRef.current);
+        setStatus(`Generating step ${stepCountRef.current}...`);
 
-        if (selectedPattern && cellDimentionX && cellDimentionY) {
+        if (selectedPattern && cellDimensionX && cellDimensionY) {
           // REPLACE WITH:
           const pixel = selectedPattern[0][0];
           const cellX = (entropyMin % outputDimWidth) * scaleFactor;
@@ -138,7 +135,6 @@ const CanvasComponent = ({
 
           context.fillStyle = `rgba(${pixel[0]}, ${pixel[1]}, ${pixel[2]}, ${pixel[3] / 255})`;
           context.fillRect(cellX, cellY, scaleFactor, scaleFactor);
-          setDrawnPatterns((prev) => [...prev, drawResult]);
         }
 
         if (selectedPattern === null || !entropyMin || entropyMin === 0) {
@@ -159,6 +155,7 @@ const CanvasComponent = ({
     if (!isSetupComplete) return;
 
     // Reset step counter
+    stepCountRef.current = 0;
     setStepCount(0);
 
     // Start spinner immediately
@@ -179,7 +176,7 @@ const CanvasComponent = ({
     }
 
     setIsGenerating(false);
-    setStatus(`Generation complete! Total steps: ${stepCount}`);
+    setStatus(`Generation complete! Total steps: ${stepCountRef.current}`);
   };
 
   const handleReset = () => {
@@ -187,7 +184,7 @@ const CanvasComponent = ({
       context.fillStyle = "#FFFFFF";
       context.fillRect(0, 0, context.canvas.width, context.canvas.height);
     }
-    setDrawnPatterns([]);
+    stepCountRef.current = 0;
     setStepCount(0);
     setStatus("Ready to scan");
     setError(null);
@@ -207,7 +204,7 @@ const CanvasComponent = ({
 
     setIsGenerating(false);
     if (!result) {
-      setStatus(`Generation complete! Total steps: ${stepCount}`);
+      setStatus(`Generation complete! Total steps: ${stepCountRef.current}`);
     } else {
       setStatus("Ready for next step");
     }
@@ -332,7 +329,7 @@ const CanvasComponent = ({
                     );
                     if (context && canvasRef.current) {
                       canvasRef.current.width = outputDimWidth * newScale;
-                      canvasRef.current.height = outputDimHight * newScale;
+                      canvasRef.current.height = outputDimHeight * newScale;
                       context.fillStyle = "#FFFFFF";
                       context.fillRect(
                         0,
@@ -406,7 +403,7 @@ const CanvasComponent = ({
               <div>
                 <span className="text-gray-500">Height:</span>
                 <span className="ml-2 font-medium text-gray-900">
-                  {outputDimHight}
+                  {outputDimHeight}
                 </span>
               </div>
               <div>

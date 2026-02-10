@@ -3,15 +3,15 @@ import { Adjacencies, Entropy, Frequencies, Patterns, Wave } from "./types";
 
 const useWaveFunctionCollapse = (
   outputDimWidth: number,
-  outputDimHight: number,
-  sizeFactor: number,
+  outputDimHeight: number,
+  scaleFactor: number,
   patternDim: number,
 ) => {
-  // GLOABL VARIABLES
+  // GLOBAL VARIABLES
 
   // refactor as input variables but give default values
   // const outputDimWidth = 96
-  // const outputDimHight = 50
+  // const outputDimHeight = 50
   // const sizeFactor = 9
   // const patternDim = 3 // N
 
@@ -90,8 +90,8 @@ const useWaveFunctionCollapse = (
     if you're rendering the grid to a canvas, xs and ys might be 
     the pixel dimensions of each cell.
     */
-  const [cellDimentionX, setCellDimentionX] = useState<number>();
-  const [cellDimentionY, setCellDimentionY] = useState<number>();
+  const [cellDimensionX, setCellDimensionX] = useState<number>();
+  const [cellDimensionY, setCellDimensionY] = useState<number>();
 
   /**
     * This variable likely stores the possible directions for 
@@ -187,8 +187,8 @@ const useWaveFunctionCollapse = (
      * dimensions of cells (rect) in output
      */
     // console.log("start setup");
-    setCellDimentionX(Math.floor(canvasWidth / outputDimWidth));
-    setCellDimentionY(Math.floor(canvasHeight / outputDimHight));
+    setCellDimensionX(Math.floor(canvasWidth / outputDimWidth));
+    setCellDimensionY(Math.floor(canvasHeight / outputDimHeight));
 
     let kernel: number[][] = [];
 
@@ -199,7 +199,6 @@ const useWaveFunctionCollapse = (
       }
       kernel.push(row);
     }
-    console.log("kernel created");
 
     /**
      * Stores the different patterns found in input
@@ -285,8 +284,6 @@ const useWaveFunctionCollapse = (
       }
     });
 
-    console.log("unique patterns identified");
-
     /**
      * Convert pattern counts to frequencies array
      */
@@ -298,15 +295,12 @@ const useWaveFunctionCollapse = (
       freqs[index] = count;
     });
 
-    console.log("frequencies calculated");
-
     // Set the patterns and frequencies
     setPatterns(uniquePatterns);
     const initPatterns: Patterns = uniquePatterns.map((pattern) =>
       JSON.parse(JSON.stringify(pattern)),
     ); // Deep copy to maintain 2D structure
     setFrequencies(freqs);
-    console.log("unique patterns extracted");
 
     /**
      * Initializes the 'wave', entropy and adjacencies array lists
@@ -320,9 +314,9 @@ const useWaveFunctionCollapse = (
         */
 
     // const patternsAcross = Math.floor(outputDimWidth / patternDim); // Number of patterns that fit horizontally
-    // const patternsDown = Math.floor(outputDimHight / patternDim); // Number of patterns that fit vertically
+    // const patternsDown = Math.floor(outputDimHeight / patternDim); // Number of patterns that fit vertically
     const patternsAcross = outputDimWidth; // Number of patterns that fit horizontally
-    const patternsDown = outputDimHight; // Number of patterns that fit vertically
+    const patternsDown = outputDimHeight; // Number of patterns that fit vertically
 
     // Populate W with each cell having a set of all possible patterns
     let waveInit = new Map();
@@ -363,15 +357,14 @@ const useWaveFunctionCollapse = (
     initEntropy.set(randomPatternIndex, numberOfUniquePatterns - 1);
 
     // Update the state
-    console.log("entropy values initiated");
 
     //
-    // for (let i = 0; i < outputDimWidth * outputDimHight; i++) {
+    // for (let i = 0; i < outputDimWidth * outputDimHeight; i++) {
     //     entropy.set(i, numberOfUniquePatterns);
     // }
 
     // // Randomly choose one cell to have lower entropy (numberOfUniquePatterns - 1)
-    // const randomCellIndex = Math.floor(Math.random() * outputDimWidth * outputDimHight);
+    // const randomCellIndex = Math.floor(Math.random() * outputDimWidth * outputDimHeight);
     // entropy.set(randomCellIndex, numberOfUniquePatterns - 1);
     //
     /**
@@ -386,7 +379,6 @@ const useWaveFunctionCollapse = (
       );
       initAdjacencies.set(i, adjacencySets);
     }
-    console.log("ajustencys initiated");
 
     // Computation of patterns compatibilities (check if some patterns are adjacent, if so -> store them based on their location)
 
@@ -404,23 +396,18 @@ const useWaveFunctionCollapse = (
             2 = up or North/N
             3 = down or South/S
         */
-    console.log(numberOfUniquePatterns, "numberofunique");
-    console.log("initiated Patterns");
     for (let i = 0; i < numberOfUniquePatterns; i++) {
       for (let j = 0; j < numberOfUniquePatterns; j++) {
         // Check horizontal adjacency (Left and Right)
         if (
           isHorizontallyAdjacent(initPatterns[i], initPatterns[j], patternDim)
         ) {
-          console.log("horizontal found");
           // Access the map for pattern i and pattern j
           // const adjacencyMapI = initAdjacencies[i];
           // const adjacencyMapJ = initAdjacencies[j];
 
           // Get the adjacency sets for pattern i and j, and update them
           initAdjacencies.get(i)?.[0].add(j); // i2 can be to the left of i1
-          console.log(`added ${i} to the left of ${j}`);
-          console.log(initAdjacencies.get(i));
           initAdjacencies.get(j)?.[1].add(i); // i1 can be to the right of i2
 
           // initAdjacencies[i] = adjacencyMapI;
@@ -441,11 +428,9 @@ const useWaveFunctionCollapse = (
         }
       }
     }
-    console.log("ajustency rules set");
     setWave(waveInit);
     setAdjacencies(initAdjacencies);
     setEntropy(initEntropy);
-    console.log("setup finished");
   };
 
   // DRAW FUNCTIONS
@@ -472,9 +457,6 @@ const useWaveFunctionCollapse = (
     if (entropyMin) {
       const possiblePatterns = w.get(entropyMin);
       if (!possiblePatterns || possiblePatterns.size === 0) {
-        console.log(
-          "PossiblePatterns is false or size 0 inside select Random Pattern",
-        );
         return null;
       }
 
@@ -491,7 +473,6 @@ const useWaveFunctionCollapse = (
       const randomIndex = Math.floor(Math.random() * weightedPatterns.length);
       return weightedPatterns[randomIndex];
     }
-    console.log("no entrpyMin", entropyMin);
     return null;
   };
 
@@ -513,9 +494,7 @@ const useWaveFunctionCollapse = (
     let drawWave: Wave = wave;
     let drawAdjacencies: Adjacencies = adjacencies;
     let drawEntropy: Entropy = entropy;
-    console.log("start draw");
     if (!drawEntropy || drawEntropy.size === 0) {
-      console.log("entropy is Empty", drawEntropy);
       return null;
     }
     /**
@@ -523,7 +502,6 @@ const useWaveFunctionCollapse = (
      */
     const entropyMin: number | null = findMinEntropyKey(drawEntropy);
     if (entropyMin === null) {
-      console.log("entropyMin is null", entropyMin);
       return null; // Return null if entropyMin is not found
     }
 
@@ -540,7 +518,6 @@ const useWaveFunctionCollapse = (
     );
     // console.log(selectedPatternId);
     if (selectedPatternId === null) {
-      console.log("selectedPatternId is null", selectedPatternId);
       return null; // Return null if no pattern is selected
     }
 
@@ -548,11 +525,6 @@ const useWaveFunctionCollapse = (
         The Wave's subarray corresponding to the cell with min entropy 
         should now only contains the id of the selected pattern
         */
-
-    if (selectedPatternId === null) {
-      console.log("selectedPatternId is null", selectedPatternId);
-      return null; // Return null if no pattern is selected
-    }
 
     // The Wave's subarray corresponding to the cell with min entropy
     // should now only contains the id of the selected pattern
@@ -588,7 +560,7 @@ const useWaveFunctionCollapse = (
             ((currentElementIndex % outputDimWidth) + dx + outputDimWidth) %
             outputDimWidth;
           const y = Math.floor(currentElementIndex / outputDimWidth) + dy;
-          if (y >= 0 && y < outputDimHight) {
+          if (y >= 0 && y < outputDimHeight) {
             const neighborElementIndex = x + y * outputDimWidth;
 
             /**
@@ -650,7 +622,6 @@ const useWaveFunctionCollapse = (
                                 it means we ran into a "contradiction". We have to stop the whole WFC algorithm.
                                 */
                 if (intersectedPatterns.size === 0) {
-                  console.log("contradiction");
                   // Handle the contradiction case here
                   // This might involve setting a state, calling a callback, or other actions
                   // For example, you might set a state indicating the algorithm should stop
@@ -694,7 +665,6 @@ const useWaveFunctionCollapse = (
     // Retrieve the selected pattern as an array of RGBA values
     const selectedPattern = patterns[selectedPatternId];
     if (!selectedPattern) {
-      console.log("selectedPattern is null", selectedPattern);
       return null; // Return null if the pattern is not found
     }
     setWave(drawWave);
@@ -704,8 +674,8 @@ const useWaveFunctionCollapse = (
     return {
       selectedPattern: selectedPattern,
       entropyMin: entropyMin,
-      cellDimentionX: cellDimentionX,
-      cellDimentionY: cellDimentionY,
+      cellDimensionX: cellDimensionX,
+      cellDimensionY: cellDimensionY,
     };
   };
   return { setup, draw };
