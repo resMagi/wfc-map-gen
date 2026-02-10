@@ -5,7 +5,7 @@ const useWaveFunctionCollapse = (
   outputDimWidth: number,
   outputDimHight: number,
   sizeFactor: number,
-  patternDim: number
+  patternDim: number,
 ) => {
   // GLOABL VARIABLES
 
@@ -44,17 +44,12 @@ const useWaveFunctionCollapse = (
     each other. A could be a structure that holds this information, 
     mapping each tile to other tiles that can be adjacent to it.
     */
-  const [adjacencies, setAdjacencies] = useState<Adjacencies>([]);
+  const [adjacencies, setAdjacencies] = useState<Adjacencies>(new Map());
 
   const updateAdjacencies = (index: number, adjacencySets: Set<number>[]) => {
-    const newAdjacencyMap = new Map<number, Set<number>[]>().set(
-      index,
-      adjacencySets
-    );
-    const newAdjacencies = [...adjacencies];
-    newAdjacencies[index] = newAdjacencyMap;
-
-    setAdjacencies(newAdjacencies);
+    const newAdjacencyMap = new Map(adjacencies);
+    newAdjacencyMap.set(index, adjacencySets);
+    setAdjacencies(newAdjacencyMap);
   };
 
   /**
@@ -136,64 +131,40 @@ const useWaveFunctionCollapse = (
   //     const leftColumnPixelPattern2 = pattern2[row];
   //     if (!arePixelsEqual(pattern1[i], pattern2[i])) {
   //       return false;
-  //     }
-  //   }
-  //   return true;
-  // };
-
   const isHorizontallyAdjacent = (
-    pattern1: number[][],
-    pattern2: number[][],
-    N: number
+    pattern1: number[][][],
+    pattern2: number[][][],
+    N: number,
   ): boolean => {
-    for (let i = 0; i < pattern1.length; i++) {
-      // Skip the last column of pattern1 and the first column of pattern2
-      if (i % N === N - 1 || i % N === 0) {
-        continue;
-      }
+    // Flatten patterns to 1D like the original Python implementation
+    const flat1 = pattern1.flat();
+    const flat2 = pattern2.flat();
 
-      // Compare the corresponding elements of the two patterns
-      if (!arePixelsEqual(pattern1[i], pattern2[i])) {
-        return false;
-      }
-    }
-    return true;
+    // Check if pattern1's right edge matches pattern2's left edge
+    // Original logic: [n for i, n in enumerate(patterns[i1]) if i%N!=(N-1)] == [n for i, n in enumerate(patterns[i2]) if i%N!=0]
+    const pattern1LeftEdge = flat1.filter((_, i) => i % N !== N - 1);
+    const pattern2RightEdge = flat2.filter((_, i) => i % N !== 0);
+
+    return (
+      JSON.stringify(pattern1LeftEdge) === JSON.stringify(pattern2RightEdge)
+    );
   };
 
-  // const isVerticallyAdjacent = (
-  //   pattern1: number[][],
-  //   pattern2: number[][],
-  //   patternDim: number
-  // ): boolean => {
-  //   for (let i = 0; i < patternDim; i++) {
-  //     const buttomindex = pattern2.length - 1 - i;
-  //     const bottomRowPattern1 = pattern1[patternDim - i - 1];
-  //     const topRowPattern2 = pattern2[buttomindex];
-  //     if (!arePixelsEqual(topOfPattern1[i], topbottomOfPattern2[i])) {
-  //       return false;
-  //     }
-  //   }
-  //   return true;
-  // };
-
   const isVerticallyAdjacent = (
-    pattern1: number[][],
-    pattern2: number[][],
-    N: number
+    pattern1: number[][][],
+    pattern2: number[][][],
+    N: number,
   ): boolean => {
-    // Get the first N-1 rows of pattern1
-    let topOfPattern1 = pattern1.slice(0, N * N - N);
+    // Flatten patterns to 1D like the original Python implementation
+    const flat1 = pattern1.flat();
+    const flat2 = pattern2.flat();
 
-    // Get the last N-1 rows of pattern2
-    let bottomOfPattern2 = pattern2.slice(N);
+    // Check if pattern1's top edge matches pattern2's bottom edge
+    // Original logic: patterns[i1][:(N*N)-N] == patterns[i2][N:]
+    const pattern1Top = flat1.slice(0, N * N - N);
+    const pattern2Bottom = flat2.slice(N);
 
-    // Compare the slices for equality
-    for (let i = 0; i < topOfPattern1.length; i++) {
-      if (!arePixelsEqual(topOfPattern1[i], bottomOfPattern2[i])) {
-        return false;
-      }
-    }
-    return true;
+    return JSON.stringify(pattern1Top) === JSON.stringify(pattern2Bottom);
   };
 
   const setup = (
@@ -201,7 +172,7 @@ const useWaveFunctionCollapse = (
     imageWidth: number,
     imageHeight: number,
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
   ) => {
     // need to be imported from component
     // let image // input image
@@ -268,13 +239,20 @@ const useWaveFunctionCollapse = (
           });
           cmat.push(patternRow);
         });
-        allPatterns.push(cmat);
-        // for (let r = 0; r < 4; r++) {
-        //   cmat = rotate90(cmat); // Rotate 90 degrees
-        //   allPatterns.push(cmat);
-        //   allPatterns.push(cmat.slice().reverse()); // Vertical flip
-        //   allPatterns.push(cmat.map((row) => row.slice().reverse())); // Horizontal flip
-        // }
+
+        // Add all rotations and flips like the original Python implementation
+        let currentPattern = cmat;
+        for (let r = 0; r < 4; r++) {
+          // Add current rotation
+          allPatterns.push(currentPattern);
+          // Add vertical flip
+          allPatterns.push(currentPattern.slice().reverse());
+          // Add horizontal flip
+          allPatterns.push(currentPattern.map((row) => row.slice().reverse()));
+
+          // Rotate 90 degrees for next iteration
+          currentPattern = rotate90(currentPattern);
+        }
       }
     }
     console.log("patterns extraced");
@@ -289,37 +267,45 @@ const useWaveFunctionCollapse = (
         */
 
     // Assuming 'all' is an array of 2D arrays (e.g., number[][][])
-    // Flatten each 2D pattern into 1D
-    // Assuming allPatterns is an array of 3D arrays (number[][][])
+    // Keep patterns as 2D arrays for proper canvas rendering
     let patternCounts = new Map<string, number>();
+    const uniquePatterns: Patterns = [];
+    const patternIndexMap = new Map<string, number>();
 
-    allPatterns.forEach((pattern) => {
-      // Flatten each 3D pattern into a 1D array of RGBA arrays
-      let flattenedPattern = pattern.flatMap((row) => row);
+    allPatterns.forEach((pattern, index) => {
+      // Create a string key for comparison
+      const patternKey = JSON.stringify(pattern);
 
-      // Convert the flattened pattern into a JSON string
-      let key = JSON.stringify(flattenedPattern);
-
-      // Count occurrences
-      const newPatternCount = patternCounts.get(key);
-      if (patternCounts.has(key) && newPatternCount !== undefined) {
-        patternCounts.set(key, newPatternCount + 1);
+      if (patternCounts.has(patternKey)) {
+        patternCounts.set(patternKey, patternCounts.get(patternKey)! + 1);
       } else {
-        patternCounts.set(key, 1);
+        patternCounts.set(patternKey, 1);
+        patternIndexMap.set(patternKey, uniquePatterns.length);
+        uniquePatterns.push(pattern);
       }
     });
 
-    // Get the number of unique patterns
-    let numberOfUniquePatterns = patternCounts.size;
+    console.log("unique patterns identified");
 
-    // Extracting patterns and frequencies
-    let newPatterns = Array.from(patternCounts.keys()).map((key) =>
-      JSON.parse(key)
-    );
-    setPatterns(newPatterns);
-    let initPatterns: Patterns = newPatterns;
-    let newFrequencies = Array.from(patternCounts.values());
-    setFrequencies(newFrequencies);
+    /**
+     * Convert pattern counts to frequencies array
+     */
+    const numberOfUniquePatterns = uniquePatterns.length;
+    const freqs: number[] = new Array(numberOfUniquePatterns).fill(0);
+
+    patternCounts.forEach((count, key) => {
+      const index = patternIndexMap.get(key)!;
+      freqs[index] = count;
+    });
+
+    console.log("frequencies calculated");
+
+    // Set the patterns and frequencies
+    setPatterns(uniquePatterns);
+    const initPatterns: Patterns = uniquePatterns.map((pattern) =>
+      JSON.parse(JSON.stringify(pattern)),
+    ); // Deep copy to maintain 2D structure
+    setFrequencies(freqs);
     console.log("unique patterns extracted");
 
     /**
@@ -344,8 +330,8 @@ const useWaveFunctionCollapse = (
       waveInit.set(
         i,
         new Set(
-          Array.from({ length: numberOfUniquePatterns }, (_, index) => index)
-        )
+          Array.from({ length: numberOfUniquePatterns }, (_, index) => index),
+        ),
       );
     }
 
@@ -372,7 +358,7 @@ const useWaveFunctionCollapse = (
 
     // Randomly choose one pattern to have lower entropy
     const randomPatternIndex = Math.floor(
-      Math.random() * (patternsAcross * patternsDown)
+      Math.random() * (patternsAcross * patternsDown),
     );
     initEntropy.set(randomPatternIndex, numberOfUniquePatterns - 1);
 
@@ -396,7 +382,7 @@ const useWaveFunctionCollapse = (
     let initAdjacencies: Adjacencies = new Map<number, Set<number>[]>();
     for (let i = 0; i < numberOfUniquePatterns; i++) {
       let adjacencySets: Set<number>[] = directions.map(
-        () => new Set<number>()
+        () => new Set<number>(),
       );
       initAdjacencies.set(i, adjacencySets);
     }
@@ -481,13 +467,13 @@ const useWaveFunctionCollapse = (
   const selectRandomPattern = (
     w: Wave,
     entropyMin: number | null,
-    frequencies: Frequencies
+    frequencies: Frequencies,
   ): number | null => {
     if (entropyMin) {
       const possiblePatterns = w.get(entropyMin);
       if (!possiblePatterns || possiblePatterns.size === 0) {
         console.log(
-          "PossiblePatterns is false or size 0 inside select Random Pattern"
+          "PossiblePatterns is false or size 0 inside select Random Pattern",
         );
         return null;
       }
@@ -550,7 +536,7 @@ const useWaveFunctionCollapse = (
     const selectedPatternId = selectRandomPattern(
       drawWave,
       entropyMin,
-      frequencies
+      frequencies,
     );
     // console.log(selectedPatternId);
     if (selectedPatternId === null) {
@@ -640,7 +626,7 @@ const useWaveFunctionCollapse = (
                             We also look at the patterns that ARE available in the neighboring cell
                             */
               const availablePatterns: Set<number> = new Set(
-                drawWave.get(neighborElementIndex) ?? []
+                drawWave.get(neighborElementIndex) ?? [],
               );
 
               /**
@@ -656,7 +642,7 @@ const useWaveFunctionCollapse = (
                                 */
                 const intersectedPatterns = intersectSets(
                   possiblePatterns,
-                  availablePatterns
+                  availablePatterns,
                 );
 
                 /**

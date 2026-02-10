@@ -35,15 +35,20 @@ const CanvasComponent = ({
   const [imageData, setImageData] = useState<ImageData>();
   const [drawnPatterns, setDrawnPatterns] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [stepCount, setStepCount] = useState(0);
+  const [patternSize, setPatternSize] = useState(patternDim);
+  const [scaleFactor, setScaleFactor] = useState(sizeFactor);
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState<string | null>(null);
   const [isSetupComplete, setIsSetupComplete] = useState(false);
+  const [patternsReady, setPatternsReady] = useState(false);
 
   const { setup, draw } = useWaveFunctionCollapse(
     outputDimWidth,
     outputDimHight,
-    sizeFactor,
-    patternDim,
+    1, // Always use scale factor 1 for WFC calculations
+    patternSize,
   );
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -63,7 +68,7 @@ const CanvasComponent = ({
             );
             console.log(imageData, "imageData");
             setImageData(imageData);
-            setStatus("Image loaded successfully");
+            setStatus("Image loaded - ready to scan");
             setError(null);
           })
           .catch((error) => {
@@ -72,34 +77,45 @@ const CanvasComponent = ({
             setStatus("Error");
           });
 
-        canvas.width = outputDimWidth * sizeFactor;
-        canvas.height = outputDimHight * sizeFactor;
+        canvas.width = outputDimWidth * scaleFactor;
+        canvas.height = outputDimHight * scaleFactor;
 
         context.fillStyle = "#FFFFFF";
         context.fillRect(0, 0, context.canvas.width, context.canvas.height);
       }
     }
-  }, [outputDimWidth, outputDimHight, sizeFactor]);
+  }, [outputDimWidth, outputDimHight, scaleFactor]);
 
-  useEffect(() => {
-    if (imageData) {
-      try {
-        setup(
-          imageData.data,
-          imageData.width,
-          imageData.height,
-          outputDimWidth * sizeFactor,
-          outputDimHight * sizeFactor,
-        );
-        setIsSetupComplete(true);
-        setStatus("Ready to generate");
-        setError(null);
-      } catch (err) {
-        setError("Failed to setup WFC algorithm");
-        setStatus("Error");
-      }
+  // Remove automatic setup - will be triggered by scan button
+
+  const handleScan = async () => {
+    if (!imageData) return;
+
+    setIsScanning(true);
+    setStatus("Scanning patterns...");
+    setError(null);
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 10)); // Allow UI update
+
+      setup(
+        imageData.data,
+        imageData.width,
+        imageData.height,
+        outputDimWidth, // Always use original dimensions for WFC
+        outputDimHight,
+      );
+
+      setIsSetupComplete(true);
+      setPatternsReady(true);
+      setStatus("Patterns ready - ready to generate");
+    } catch (err) {
+      setError("Failed to scan patterns");
+      setStatus("Error");
+    } finally {
+      setIsScanning(false);
     }
-  }, [imageData, outputDimWidth, outputDimHight, sizeFactor]);
+  };
 
   const drawOnCanvas = async () => {
     if (!context || !isSetupComplete) return false;
@@ -110,25 +126,18 @@ const CanvasComponent = ({
         const { selectedPattern, entropyMin, cellDimentionX, cellDimentionY } =
           drawResult;
 
+        // Increment step counter
+        setStepCount((prev) => prev + 1);
+        setStatus(`Generating step ${stepCount + 1}...`);
+
         if (selectedPattern && cellDimentionX && cellDimentionY) {
-          const patternSize = Math.sqrt(selectedPattern.length);
-          selectedPattern.forEach((pixel, pixelIndex) => {
-            const rowIndex = Math.floor(pixelIndex / patternSize);
-            const colIndex = pixelIndex % patternSize;
+          // REPLACE WITH:
+          const pixel = selectedPattern[0][0];
+          const cellX = (entropyMin % outputDimWidth) * scaleFactor;
+          const cellY = Math.floor(entropyMin / outputDimWidth) * scaleFactor;
 
-            context.fillStyle = `rgba(${pixel[0]}, ${pixel[1]}, ${pixel[2]}, ${
-              pixel[3] / 255
-            })`;
-
-            const x =
-              (entropyMin % outputDimWidth) * cellDimentionX +
-              colIndex * patternDim;
-            const y =
-              Math.floor(entropyMin / outputDimWidth) * cellDimentionY +
-              rowIndex * patternDim;
-
-            context.fillRect(x, y, patternDim, patternDim);
-          });
+          context.fillStyle = `rgba(${pixel[0]}, ${pixel[1]}, ${pixel[2]}, ${pixel[3] / 255})`;
+          context.fillRect(cellX, cellY, scaleFactor, scaleFactor);
           setDrawnPatterns((prev) => [...prev, drawResult]);
         }
 
@@ -149,6 +158,9 @@ const CanvasComponent = ({
   const drawLoop = async () => {
     if (!isSetupComplete) return;
 
+    // Reset step counter
+    setStepCount(0);
+
     // Start spinner immediately
     setIsGenerating(true);
     setStatus("Generating full map...");
@@ -159,13 +171,15 @@ const CanvasComponent = ({
     let loop = true;
     while (loop) {
       const result = await drawOnCanvas();
+      // Small delay to allow UI to update with new step count
+      await new Promise((resolve) => setTimeout(resolve, 5));
       if (!result) {
         loop = false;
       }
     }
 
     setIsGenerating(false);
-    setStatus("Generation complete!");
+    setStatus(`Generation complete! Total steps: ${stepCount}`);
   };
 
   const handleReset = () => {
@@ -174,7 +188,8 @@ const CanvasComponent = ({
       context.fillRect(0, 0, context.canvas.width, context.canvas.height);
     }
     setDrawnPatterns([]);
-    setStatus("Ready to generate");
+    setStepCount(0);
+    setStatus("Ready to scan");
     setError(null);
   };
 
@@ -192,7 +207,7 @@ const CanvasComponent = ({
 
     setIsGenerating(false);
     if (!result) {
-      setStatus("Generation complete!");
+      setStatus(`Generation complete! Total steps: ${stepCount}`);
     } else {
       setStatus("Ready for next step");
     }
@@ -224,17 +239,23 @@ const CanvasComponent = ({
                   className={`text-sm font-semibold ${
                     error
                       ? "text-red-600"
-                      : isGenerating
+                      : isGenerating || isScanning
                         ? "text-blue-600"
-                        : "text-green-600"
+                        : patternsReady
+                          ? "text-green-600"
+                          : "text-yellow-600"
                   }`}
                 >
                   {status}
                 </span>
-                {isGenerating && <Spinner size="sm" />}
+                {(isGenerating || isScanning) && <Spinner size="sm" />}
               </div>
-              <div className="text-sm text-gray-500">
-                Patterns drawn: {drawnPatterns.length}
+              <div className="flex items-center space-x-4">
+                {stepCount > 0 && (
+                  <div className="text-sm text-gray-500">
+                    Steps: {stepCount}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -261,33 +282,113 @@ const CanvasComponent = ({
           </div>
 
           {/* Control Panel */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button
-              onClick={drawLoop}
-              disabled={isGenerating || !isSetupComplete}
-              className="flex items-center space-x-2"
-            >
-              {isGenerating ? <Spinner size="sm" /> : null}
-              <span>
-                {isGenerating ? "Generating..." : "Generate Full Map"}
-              </span>
-            </Button>
+          <div className="space-y-4">
+            {/* Pattern Configuration */}
+            <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
+              <div className="flex items-center space-x-2">
+                <label
+                  htmlFor="patternSize"
+                  className="text-sm font-medium text-gray-700"
+                >
+                  Pattern Size:
+                </label>
+                <input
+                  id="patternSize"
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={patternSize}
+                  onChange={(e) =>
+                    setPatternSize(
+                      Math.max(1, Math.min(10, parseInt(e.target.value) || 1)),
+                    )
+                  }
+                  disabled={isScanning || isGenerating}
+                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-900"
+                  style={{ fontVariantNumeric: "tabular-nums" }}
+                />
+                <span className="text-sm text-gray-500 ml-1">
+                  x{patternSize}
+                </span>
+              </div>
 
-            <Button
-              onClick={handleStepGeneration}
-              disabled={isGenerating || !isSetupComplete}
-              variant="secondary"
-            >
-              Generate Step
-            </Button>
+              <div className="flex items-center space-x-2">
+                <label
+                  htmlFor="scaleFactor"
+                  className="text-sm font-medium text-gray-700"
+                >
+                  Scale Factor:
+                </label>
+                <input
+                  id="scaleFactor"
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={scaleFactor}
+                  onChange={(e) => {
+                    const newScale = Math.max(
+                      1,
+                      Math.min(20, parseInt(e.target.value) || 1),
+                    );
+                    if (context && canvasRef.current) {
+                      canvasRef.current.width = outputDimWidth * newScale;
+                      canvasRef.current.height = outputDimHight * newScale;
+                      context.fillStyle = "#FFFFFF";
+                      context.fillRect(
+                        0,
+                        0,
+                        context.canvas.width,
+                        context.canvas.height,
+                      );
+                    }
+                    setScaleFactor(newScale);
+                  }}
+                  disabled={isScanning || isGenerating}
+                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-900"
+                  style={{ fontVariantNumeric: "tabular-nums" }}
+                />
+                <span className="text-sm text-gray-500 ml-1">px</span>
+              </div>
 
-            <Button
-              onClick={handleReset}
-              disabled={isGenerating}
-              variant="danger"
-            >
-              Reset Canvas
-            </Button>
+              <Button
+                onClick={handleScan}
+                disabled={!imageData || isScanning || isGenerating}
+                className="flex items-center space-x-2"
+              >
+                {isScanning ? <Spinner size="sm" /> : null}
+                <span>{isScanning ? "Scanning..." : "Scan Patterns"}</span>
+              </Button>
+            </div>
+
+            {/* Generation Controls */}
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Button
+                onClick={drawLoop}
+                disabled={isGenerating || !isSetupComplete}
+                className="flex items-center space-x-2"
+              >
+                {isGenerating ? <Spinner size="sm" /> : null}
+                <span>
+                  {isGenerating ? "Generating..." : "Generate Full Map"}
+                </span>
+              </Button>
+
+              <Button
+                onClick={handleStepGeneration}
+                disabled={isGenerating || !isSetupComplete}
+                variant="secondary"
+              >
+                Generate Step
+              </Button>
+
+              <Button
+                onClick={handleReset}
+                disabled={isGenerating}
+                variant="danger"
+              >
+                Reset Canvas
+              </Button>
+            </div>
           </div>
 
           {/* Info Panel */}
@@ -298,21 +399,27 @@ const CanvasComponent = ({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
               <div>
                 <span className="text-gray-500">Width:</span>
-                <span className="ml-2 font-medium">{outputDimWidth}</span>
+                <span className="ml-2 font-medium text-gray-900">
+                  {outputDimWidth}
+                </span>
               </div>
               <div>
                 <span className="text-gray-500">Height:</span>
-                <span className="ml-2 font-medium">{outputDimHight}</span>
+                <span className="ml-2 font-medium text-gray-900">
+                  {outputDimHight}
+                </span>
               </div>
               <div>
                 <span className="text-gray-500">Pattern Size:</span>
-                <span className="ml-2 font-medium">
-                  {patternDim}x{patternDim}
+                <span className="ml-2 font-medium text-gray-900">
+                  {patternSize}x{patternSize}
                 </span>
               </div>
               <div>
                 <span className="text-gray-500">Scale Factor:</span>
-                <span className="ml-2 font-medium">{sizeFactor}px</span>
+                <span className="ml-2 font-medium text-gray-900">
+                  {scaleFactor}px
+                </span>
               </div>
             </div>
           </div>
